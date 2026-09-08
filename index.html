@@ -235,7 +235,14 @@ function step() {
 
       // once a ball has settled, ease the word back upright so it stays legible
       const settled = gravityOn && Math.abs(b.vy) < 0.6 && Math.abs(b.vx) < 0.6;
-      if (settled) { b.spin *= 0.85; b.angle *= 0.94; }
+      // angle is rendered at 0.12deg per unit, so a full turn is 3000 units —
+      // ease toward the nearest whole turn rather than all the way back to zero,
+      // otherwise a ball that spun a lot settles upside down.
+      if (settled) {
+        b.spin *= 0.85;
+        const turn = Math.round(b.angle / 3000) * 3000;
+        b.angle = turn + (b.angle - turn) * 0.94;
+      }
     }
     b.el.style.transform =
       `translate(${b.x - b.r}px, ${b.y - b.r}px) rotate(${b.angle * 0.12}deg)`;
