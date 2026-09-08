@@ -135,6 +135,17 @@ let fontIndex = 0;
 
 function rand(a, b) { return a + Math.random() * (b - a); }
 
+// widest the word may be: the chord across the circle, minus a little margin
+function fitLabel(label, r) {
+  let size = r * 0.62;
+  label.style.fontSize = size + 'px';
+  let guard = 0;
+  while (label.scrollWidth > r * 1.30 && size > 6 && guard++ < 80) {
+    size *= 0.92;
+    label.style.fontSize = size + 'px';
+  }
+}
+
 function makeBall(x, y, vx, vy, r) {
   r = r || rand(46, 96);
   const font = FONTS[fontIndex++ % FONTS.length];
@@ -153,13 +164,11 @@ function makeBall(x, y, vx, vy, r) {
 
   stage.appendChild(el);
 
-  // shrink the word until it fits comfortably inside the circle
-  let size = r * 0.68;
-  label.style.fontSize = size + 'px';
-  let guard = 0;
-  while (label.scrollWidth > r * 1.45 && size > 6 && guard++ < 60) {
-    size *= 0.9;
-    label.style.fontSize = size + 'px';
+  // shrink the word until it fits comfortably inside the circle.
+  // re-run once the webfont lands — the first pass measures fallback metrics.
+  fitLabel(label, r);
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load(`16px ${font}`, 'Scott').then(() => fitLabel(label, r));
   }
 
   const b = {
