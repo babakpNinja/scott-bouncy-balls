@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scott — Bouncy Ball Hello World</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Lobster&family=Press+Start+2P&family=Pacifico&family=Orbitron:wght@900&family=Playfair+Display:ital,wght@1,900&family=Righteous&family=Bebas+Neue&family=Caveat:wght@700&family=Monoton&family=Rubik+Mono+One&family=Shadows+Into+Light&family=Fredoka:wght@700&family=Cinzel:wght@900&family=Permanent+Marker&family=Audiowide&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    background: radial-gradient(circle at 20% 10%, #1e2a5a 0%, #0b0f22 45%, #05060f 100%);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #fff;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #stage { position: fixed; inset: 0; }
+
+  .ball {
+    position: absolute;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    will-change: transform;
+    cursor: grab;
+    text-align: center;
+    line-height: 1;
+    padding: 6px;
+    overflow: hidden;
+    box-shadow:
+      inset -10px -14px 26px rgba(0,0,0,.35),
+      inset 10px 12px 22px rgba(255,255,255,.28),
+      0 10px 30px rgba(0,0,0,.45);
+  }
+  .ball::after {
+    content: "";
+    position: absolute;
+    top: 12%; left: 18%;
+    width: 26%; height: 20%;
+    border-radius: 50%;
+    background: rgba(255,255,255,.55);
+    filter: blur(4px);
+  }
+  .ball span {
+    position: relative;
+    z-index: 2;
+    display: block;
+    padding: 0 4px;
+    text-shadow: 0 2px 6px rgba(0,0,0,.35);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .ball.grabbed { cursor: grabbing; }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: 18px 22px;
+    display: flex; align-items: baseline; gap: 14px;
+    pointer-events: none; z-index: 50;
+  }
+  h1 {
+    margin: 0; font-size: 20px; letter-spacing: .14em; text-transform: uppercase;
+    font-weight: 800;
+    background: linear-gradient(90deg,#7ee8fa,#eec0c6,#ffd86f);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header p { margin: 0; font-size: 13px; color: #93a0c8; }
+
+  #hud {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    padding: 14px 22px 18px;
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    z-index: 50;
+    background: linear-gradient(180deg, transparent, rgba(4,6,16,.75));
+  }
+  button {
+    font: inherit; font-size: 13px; font-weight: 600;
+    color: #dfe6ff;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.16);
+    padding: 9px 15px; border-radius: 999px;
+    cursor: pointer; backdrop-filter: blur(8px);
+    transition: background .15s, transform .1s, border-color .15s;
+  }
+  button:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.3); }
+  button:active { transform: scale(.96); }
+  #count { font-size: 12px; color: #6f7ca6; margin-left: auto; letter-spacing: .05em; }
+  @media (max-width: 620px) { #count { width: 100%; margin: 4px 0 0; } }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<header>
+  <h1>Hello, Scott</h1>
+  <p>Click anywhere to drop a ball · drag &amp; fling them · deployed on Railway</p>
+</header>
+
+<div id="hud">
+  <button id="add">+ Add ball</button>
+  <button id="burst">Confetti burst</button>
+  <button id="gravity">Gravity: on</button>
+  <button id="reset">Reset</button>
+  <span id="count">0 balls</span>
+</div>
+
+<script>
+const stage = document.getElementById('stage');
+const balls = [];
+
+const FONTS = [
+  'Bungee', 'Lobster', '"Press Start 2P"', 'Pacifico', 'Orbitron',
+  '"Playfair Display"', 'Righteous', '"Bebas Neue"', 'Caveat', 'Monoton',
+  '"Rubik Mono One"', '"Shadows Into Light"', 'Fredoka', 'Cinzel',
+  '"Permanent Marker"', 'Audiowide', 'Georgia, serif', '"Courier New", monospace'
+];
+
+const PALETTE = [
+  ['#ff6b6b', '#c92a5f'], ['#ffd166', '#f77f00'], ['#06d6a0', '#048b6b'],
+  ['#4cc9f0', '#3a0ca3'], ['#f72585', '#7209b7'], ['#b8f2e6', '#2a9d8f'],
+  ['#ffadad', '#bc4749'], ['#a0c4ff', '#3d5a80'], ['#caffbf', '#38b000'],
+  ['#fdffb6', '#e0a500'], ['#bdb2ff', '#5a189a'], ['#ffc6ff', '#9d0208']
+];
+
+let gravityOn = true;
+const GRAVITY = 0.55;
+const RESTITUTION = 0.78;
+const FRICTION = 0.995;
+let fontIndex = 0;
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function makeBall(x, y, vx, vy, r) {
+  r = r || rand(46, 96);
+  const font = FONTS[fontIndex++ % FONTS.length];
+  const [c1, c2] = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+
+  const el = document.createElement('div');
+  el.className = 'ball';
+  el.style.width = el.style.height = (r * 2) + 'px';
+  el.style.background = `radial-gradient(circle at 32% 28%, ${c1}, ${c2})`;
+
+  const label = document.createElement('span');
+  label.textContent = 'Scott';
+  label.style.fontFamily = font;
+  label.style.color = Math.random() > 0.45 ? '#fff' : '#150a20';
+  el.appendChild(label);
+
+  stage.appendChild(el);
+
+  // shrink the word until it fits comfortably inside the circle
+  let size = r * 0.72;
+  label.style.fontSize = size + 'px';
+  let guard = 0;
+  while (label.scrollWidth > r * 1.62 && size > 6 && guard++ < 60) {
+    size *= 0.9;
+    label.style.fontSize = size + 'px';
+  }
+
+  const b = {
+    el, r,
+    x: x, y: y,
+    vx: vx !== undefined ? vx : rand(-9, 9),
+    vy: vy !== undefined ? vy : rand(-6, 2),
+    spin: rand(-3, 3),
+    angle: rand(0, 360),
+    dragging: false
+  };
+  balls.push(b);
+  attachDrag(b);
+  return b;
+}
+
+function attachDrag(b) {
+  let last = { x: 0, y: 0, t: 0 };
+  b.el.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    b.dragging = true;
+    b.el.classList.add('grabbed');
+    b.el.setPointerCapture(e.pointerId);
+    last = { x: e.clientX, y: e.clientY, t: performance.now() };
+  });
+  b.el.addEventListener('pointermove', (e) => {
+    if (!b.dragging) return;
+    const now = performance.now();
+    const dt = Math.max(now - last.t, 8);
+    b.vx = (e.clientX - last.x) / dt * 16;
+    b.vy = (e.clientY - last.y) / dt * 16;
+    b.x = e.clientX; b.y = e.clientY;
+    last = { x: e.clientX, y: e.clientY, t: now };
+  });
+  const release = () => { b.dragging = false; b.el.classList.remove('grabbed'); };
+  b.el.addEventListener('pointerup', release);
+  b.el.addEventListener('pointercancel', release);
+}
+
+function step() {
+  const W = window.innerWidth, H = window.innerHeight;
+
+  for (const b of balls) {
+    if (!b.dragging) {
+      if (gravityOn) b.vy += GRAVITY;
+      b.x += b.vx;
+      b.y += b.vy;
+      b.vx *= FRICTION;
+      b.vy *= FRICTION;
+      b.angle += b.spin;
+
+      if (b.x - b.r < 0)      { b.x = b.r;      b.vx = Math.abs(b.vx) * RESTITUTION; b.spin = -b.spin * .8; }
+      if (b.x + b.r > W)      { b.x = W - b.r;  b.vx = -Math.abs(b.vx) * RESTITUTION; b.spin = -b.spin * .8; }
+      if (b.y - b.r < 0)      { b.y = b.r;      b.vy = Math.abs(b.vy) * RESTITUTION; }
+      if (b.y + b.r > H) {
+        b.y = H - b.r;
+        b.vy = -Math.abs(b.vy) * RESTITUTION;
+        b.vx *= 0.985;
+        if (Math.abs(b.vy) < 1.2 && gravityOn) b.vy = 0;
+      }
+    }
+    b.el.style.transform =
+      `translate(${b.x - b.r}px, ${b.y - b.r}px) rotate(${b.angle * 0.15}deg)`;
+  }
+
+  // ball-to-ball collisions
+  for (let i = 0; i < balls.length; i++) {
+    for (let j = i + 1; j < balls.length; j++) {
+      const a = balls[i], c = balls[j];
+      let dx = c.x - a.x, dy = c.y - a.y;
+      let d = Math.hypot(dx, dy);
+      const min = a.r + c.r;
+      if (d === 0 || d >= min) continue;
+      const nx = dx / d, ny = dy / d;
+      const overlap = (min - d) / 2;
+      if (!a.dragging) { a.x -= nx * overlap; a.y -= ny * overlap; }
+      if (!c.dragging) { c.x += nx * overlap; c.y += ny * overlap; }
+      const rvx = c.vx - a.vx, rvy = c.vy - a.vy;
+      const sep = rvx * nx + rvy * ny;
+      if (sep > 0) continue;
+      const imp = -(1 + RESTITUTION) * sep / 2;
+      if (!a.dragging) { a.vx -= imp * nx; a.vy -= imp * ny; a.spin += imp * 0.2; }
+      if (!c.dragging) { c.vx += imp * nx; c.vy += imp * ny; c.spin -= imp * 0.2; }
+    }
+  }
+
+  document.getElementById('count').textContent =
+    balls.length + (balls.length === 1 ? ' ball' : ' balls') + ' · ' + FONTS.length + ' fonts';
+  requestAnimationFrame(step);
+}
+
+function reset(n) {
+  balls.splice(0).forEach(b => b.el.remove());
+  const W = window.innerWidth, H = window.innerHeight;
+  for (let i = 0; i < n; i++) {
+    makeBall(rand(120, W - 120), rand(120, H * 0.55), rand(-8, 8), rand(-4, 4));
+  }
+}
+
+document.getElementById('add').onclick = () =>
+  makeBall(rand(120, innerWidth - 120), 120, rand(-10, 10), 0);
+
+document.getElementById('burst').onclick = () => {
+  const cx = innerWidth / 2, cy = innerHeight / 2;
+  for (let i = 0; i < 10; i++) {
+    const a = (Math.PI * 2 * i) / 10;
+    makeBall(cx, cy, Math.cos(a) * 17, Math.sin(a) * 17, rand(34, 58));
+  }
+};
+
+document.getElementById('gravity').onclick = (e) => {
+  gravityOn = !gravityOn;
+  e.target.textContent = 'Gravity: ' + (gravityOn ? 'on' : 'off');
+  if (!gravityOn) balls.forEach(b => { if (Math.abs(b.vy) < 2) b.vy = rand(-5, 5); });
+};
+
+document.getElementById('reset').onclick = () => reset(9);
+
+stage.addEventListener('pointerdown', (e) => {
+  if (e.target === stage) makeBall(e.clientX, e.clientY, rand(-7, 7), rand(-8, -2));
+});
+
+document.fonts.ready.then(() => reset(9));
+requestAnimationFrame(step);
+</script>
+</body>
+</html>
